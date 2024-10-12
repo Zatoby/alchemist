@@ -7,7 +7,6 @@
 	"settings": {
 		"files.associations": {
 			"algorithm": "c"
-		},
-		"editor.lineNumbers": "relative"
+		}
 	}
 }

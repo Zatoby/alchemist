@@ -47,7 +47,8 @@ typedef struct Scene_Cbuffer {
 
 Gfx_Font *font;
 u32 font_height = 28;
-int entry(int argc, char **argv) {
+// int entry(int argc, char **argv) {
+int not_entry(int argc, char **argv) {
 	
 	window.title = STR("Bloom example");
 	
