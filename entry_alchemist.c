@@ -1,4 +1,25 @@
 
+#define SPRITE_MAX 1024
+
+typedef struct Sprite {
+    Gfx_Image *image;
+    Vector2 size;
+} Sprite;
+typedef enum SpriteID {
+    SPRITE_nil,
+    SPRITE_player,
+    SPRITE_tree_0,
+    SPRITE_rock_0
+} SpriteID;
+Sprite sprites[SPRITE_MAX];
+Sprite *get_sprite(SpriteID id) {
+    if (id >= 0 && id < SPRITE_MAX) {
+        return &sprites[id];
+    }
+
+    return &sprites[0];
+}
+
 typedef enum EntityArchetype {
     arch_nil = 0,
     arch_rock = 1,
@@ -10,6 +31,9 @@ typedef struct Entity {
     bool is_valid;
     EntityArchetype arch;
     Vector2 pos;
+
+    bool render_sprite;
+    SpriteID sprite_id;
 } Entity;
 
 #define MAX_ENTITY_COUNT 1024
@@ -38,37 +62,39 @@ void entity_destroy(Entity *entity) {
     memset(entity, 0, sizeof(Entity));
 }
 
+void setup_player(Entity *en) {
+    en->arch = arch_player;
+    en->sprite_id = SPRITE_player;
+}
+
 void setup_rock(Entity *en) {
     en->arch = arch_rock;
+    en->sprite_id = SPRITE_rock_0;
 }
 
 void setup_tree(Entity *en) {
     en->arch = arch_tree;
+    en->sprite_id = SPRITE_tree_0;
 }
 
 int entry(int argc, char **argv) {
-    // This is how we (optionally) configure the window.
-    // To see all the settable window properties, ctrl+f "struct Os_Window" in os_interface.c
     window.title = STR("Alchemist");
     window.clear_color = hex_to_rgba(0x211730ff);
 
     world = alloc(get_heap_allocator(), sizeof(World));
+    memset(world, 0, sizeof(World));
 
-    Gfx_Image *player = load_image_from_disk(fixed_string("player.png"), get_heap_allocator());
-    assert(player, "No Player Image");
-    Gfx_Image *tree = load_image_from_disk(fixed_string("tree_0.png"), get_heap_allocator());
-    assert(tree, "No Tree Image");
-    Gfx_Image *rock = load_image_from_disk(fixed_string("rock_0.png"), get_heap_allocator());
-    assert(rock, "No Rock Image");
+    sprites[SPRITE_player] = (Sprite){.image = load_image_from_disk(fixed_string("player.png"), get_heap_allocator()), .size = v2(5.0, 8.0)};
+    sprites[SPRITE_tree_0] = (Sprite){.image = load_image_from_disk(fixed_string("tree_0.png"), get_heap_allocator()), .size = v2(6.0, 10.0)};
+    sprites[SPRITE_rock_0] = (Sprite){.image = load_image_from_disk(fixed_string("rock_0.png"), get_heap_allocator()), .size = v2(4.0, 2.0)};
 
     Entity *player_en = entity_create();
-
+    setup_player(player_en);
     for (int i = 0; i < 10; i++) {
         Entity *en = entity_create();
         setup_rock(en);
-        en->pos = v2(get_random_float32_in_range(-20, 20), get_random_float32_in_range(-20, 20));
+        en->pos = v2(get_random_float32_in_range(-200, 200), get_random_float32_in_range(-200, 200));
     }
-
     for (int i = 0; i < 10; i++) {
         Entity *en = entity_create();
         setup_tree(en);
@@ -80,27 +106,28 @@ int entry(int argc, char **argv) {
     while (!window.should_close) {
         reset_temporary_storage();
 
-        float zoom = 5.0;
+        float zoom = 7.0;
         draw_frame.camera_xform = m4_make_scale(v3(1.0 / zoom, 1.0 / zoom, 1.0));
 
         float64 now = os_get_elapsed_seconds();
         float64 delta_t = now - last_time;
         last_time = now;
 
+        // == Render Entities
         for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
             Entity *en = &world->entities[i];
             if (en->is_valid) {
                 switch (en->arch) {
-                    case arch_tree:
-                        Vector2 size = v2(4.0, 6.0);
+                    // case arch_player:
+                    // break;
+                    default:
+                        Sprite *sprite = get_sprite(en->sprite_id);
+
+                        Vector2 size = sprite->size;
                         Matrix4 xform = m4_scalar(1.0);
                         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
                         xform = m4_translate(xform, v3(size.x * -0.5, 0.0, 0));
-                        draw_image_xform(tree, xform, size, COLOR_WHITE);
-                        break;
-                    case arch_player:
-                        break;
-                    default:
+                        draw_image_xform(sprite->image, xform, sprite->size, COLOR_WHITE);
                         break;
                 }
             }
@@ -130,11 +157,10 @@ int entry(int argc, char **argv) {
         player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, speed * delta_t));
 
         {
-            Vector2 size = v2(5.0, 8.0);
+            // Vector2 size = v2(5.0, 8.0);
             Matrix4 xform = m4_scalar(1.0);
             xform = m4_translate(xform, v3(player_en->pos.x, player_en->pos.y, 0));
-            xform = m4_translate(xform, v3(size.x * -0.5, 0.0, 0));
-            draw_image_xform(player, xform, size, COLOR_WHITE);
+            // xform = m4_translate(xform, v3(size.x * -0.5, 0.0, 0));
         }
 
         os_update();
