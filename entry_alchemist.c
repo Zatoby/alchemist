@@ -19,6 +19,12 @@ Vector2 round_v2_to_tile(Vector2 world_pos) {
     return world_pos;
 }
 
+// :util
+
+float sin_breathe(float time, float rate) {
+    return (sin(time * rate) + 1) / 2;
+}
+
 // :totarget
 bool almost_equals(float a, float b, float epsilon) {
     return fabs(a - b) <= epsilon;
@@ -114,6 +120,7 @@ typedef struct Entity {
     Vector2 pos;
     int health;
     bool destroyable_world_item;
+    bool is_item;
 
     bool render_sprite;
     SpriteID sprite_id;
@@ -148,6 +155,8 @@ void entity_destroy(Entity *entity) {
     memset(entity, 0, sizeof(Entity));
 }
 
+// :setups
+
 void setup_player(Entity *en) {
     en->arch = arch_player;
     en->sprite_id = SPRITE_player;
@@ -172,6 +181,7 @@ void setup_item_pine_wood(Entity *en) {
     en->arch = arch_item_pine_wood;
     en->sprite_id = SPRITE_item_pine_wood;
     en->destroyable_world_item = false;
+    en->is_item = true;
 }
 
 int entry(int argc, char **argv) {
@@ -288,9 +298,13 @@ int entry(int argc, char **argv) {
                     // break;
                     default:
                         Sprite *sprite = get_sprite(en->sprite_id);
+                        Matrix4 xform = m4_scalar(1.0);
+
+                        if (en->is_item) {
+                            xform = m4_translate(xform, v3(0, 2.0 * sin_breathe(os_get_elapsed_seconds(), 4), 0));
+                        }
 
                         Vector2 size = get_sprite_size(sprite);
-                        Matrix4 xform = m4_scalar(1.0);
                         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
                         xform = m4_translate(xform, v3(0.0, tile_width * -0.5, 0));
                         xform = m4_translate(xform, v3(sprite->image->width * -0.5, 0.0, 0));
