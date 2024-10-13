@@ -4,6 +4,9 @@
 const int tile_width = 8;
 const float entity_selection_radius = 16.0f;
 
+const int rock_health = 5;
+const int tree_health = 3;
+
 int world_pos_to_tile_pos(float world_pos) {
     return roundf(world_pos / (float)tile_width);
 }
@@ -64,13 +67,14 @@ Vector2 screen_to_world() {
 #define SPRITE_MAX 1024
 typedef struct Sprite {
     Gfx_Image *image;
-    Vector2 size;
 } Sprite;
 typedef enum SpriteID {
     SPRITE_nil,
     SPRITE_player,
-    SPRITE_tree_0,
-    SPRITE_rock_0
+    SPRITE_tree_pine,
+    SPRITE_rock_0,
+    SPRITE_item_rock,
+    SPRITE_item_pine_wood
 } SpriteID;
 Sprite sprites[SPRITE_MAX];
 Sprite *get_sprite(SpriteID id) {
@@ -81,17 +85,35 @@ Sprite *get_sprite(SpriteID id) {
     return &sprites[0];
 }
 
+Vector2 get_sprite_size(Sprite *sprite) {
+    return v2(sprite->image->width, sprite->image->height);
+}
+
+// Item items[ITEM_MAX];
+// Item *get_item(ItemID id) {
+//     if (id >= 0 && id < ITEM_MAX) {
+//         return &items[id];
+//     }
+//     return &items[0];
+// }
+
+// :entity
 #define MAX_ENTITY_COUNT 1024
 typedef enum EntityArchetype {
     arch_nil = 0,
     arch_rock = 1,
-    arch_tree = 2,
+    arch_tree_pine = 2,
     arch_player = 3,
+
+    arch_item_rock = 4,
+    arch_item_pine_wood = 5,
 } EntityArchetype;
 typedef struct Entity {
     bool is_valid;
     EntityArchetype arch;
     Vector2 pos;
+    int health;
+    bool destroyable_world_item;
 
     bool render_sprite;
     SpriteID sprite_id;
@@ -129,16 +151,27 @@ void entity_destroy(Entity *entity) {
 void setup_player(Entity *en) {
     en->arch = arch_player;
     en->sprite_id = SPRITE_player;
+    en->destroyable_world_item = false;
 }
 
 void setup_rock(Entity *en) {
     en->arch = arch_rock;
     en->sprite_id = SPRITE_rock_0;
+    en->health = rock_health;
+    en->destroyable_world_item = true;
 }
 
 void setup_tree(Entity *en) {
-    en->arch = arch_tree;
-    en->sprite_id = SPRITE_tree_0;
+    en->arch = arch_tree_pine;
+    en->sprite_id = SPRITE_tree_pine;
+    en->health = tree_health;
+    en->destroyable_world_item = true;
+}
+
+void setup_item_pine_wood(Entity *en) {
+    en->arch = arch_item_pine_wood;
+    en->sprite_id = SPRITE_item_pine_wood;
+    en->destroyable_world_item = false;
 }
 
 int entry(int argc, char **argv) {
@@ -153,9 +186,10 @@ int entry(int argc, char **argv) {
     assert(font, "Failed loading arial.ttf");
     const u32 font_height = 48;
 
-    sprites[SPRITE_player] = (Sprite){.image = load_image_from_disk(fixed_string("player.png"), get_heap_allocator()), .size = v2(5.0, 8.0)};
-    sprites[SPRITE_tree_0] = (Sprite){.image = load_image_from_disk(fixed_string("tree_0.png"), get_heap_allocator()), .size = v2(6.0, 10.0)};
-    sprites[SPRITE_rock_0] = (Sprite){.image = load_image_from_disk(fixed_string("rock_0.png"), get_heap_allocator()), .size = v2(4.0, 2.0)};
+    sprites[SPRITE_player] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/player.png"), get_heap_allocator())};
+    sprites[SPRITE_tree_pine] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/tree_pine.png"), get_heap_allocator())};
+    sprites[SPRITE_rock_0] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/rock_0.png"), get_heap_allocator())};
+    sprites[SPRITE_item_pine_wood] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/item_pinewood.png"), get_heap_allocator())};
 
     Entity *player_en = entity_create();
     setup_player(player_en);
@@ -202,7 +236,7 @@ int entry(int argc, char **argv) {
         int mouse_tile_x = world_pos_to_tile_pos(mouse_pos_world.x);
         int mouse_tile_y = world_pos_to_tile_pos(mouse_pos_world.y);
 
-        // mouse pos in world space
+        // :select
         {
             // log("%f, %f", input_frame.mouse_x, input_frame.mouse_y);
             // draw_text(font, tprint("%f %f", mouse_pos_world.x, mouse_pos_world.y), font_height, mouse_pos_world, v2(0.1, 0.1), COLOR_WHITE);
@@ -211,7 +245,7 @@ int entry(int argc, char **argv) {
 
             for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
                 Entity *en = &world->entities[i];
-                if (en->is_valid) {
+                if (en->is_valid && en->destroyable_world_item) {
                     int entity_tile_x = world_pos_to_tile_pos(en->pos.x);
                     int entity_tile_y = world_pos_to_tile_pos(en->pos.y);
 
@@ -255,18 +289,18 @@ int entry(int argc, char **argv) {
                     default:
                         Sprite *sprite = get_sprite(en->sprite_id);
 
-                        Vector2 size = sprite->size;
+                        Vector2 size = get_sprite_size(sprite);
                         Matrix4 xform = m4_scalar(1.0);
                         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
                         xform = m4_translate(xform, v3(0.0, tile_width * -0.5, 0));
-                        xform = m4_translate(xform, v3(sprite->size.x * -0.5, 0.0, 0));
+                        xform = m4_translate(xform, v3(sprite->image->width * -0.5, 0.0, 0));
 
                         Vector4 col = COLOR_WHITE;
                         if (world_frame.selected_entity == en) {
                             col = COLOR_RED;
                         }
 
-                        draw_image_xform(sprite->image, xform, sprite->size, col);
+                        draw_image_xform(sprite->image, xform, get_sprite_size(sprite), col);
                         break;
                 }
             }
@@ -274,6 +308,34 @@ int entry(int argc, char **argv) {
 
         if (is_key_just_pressed(KEY_ESCAPE)) {
             window.should_close = true;
+        }
+
+        {
+            Entity *selected_en = world_frame.selected_entity;
+
+            if (is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en) {
+                consume_key_just_pressed(MOUSE_BUTTON_LEFT);  // -> consuming key, so that if we call it later on it won't hit. i.e UI
+                selected_en->health -= 1;
+                if (selected_en->health <= 0) {
+                    switch (selected_en->arch) {
+                        case arch_tree_pine: {
+                            {
+                                Entity *en = entity_create();
+                                setup_item_pine_wood(en);
+                                en->pos = selected_en->pos;
+                            }
+                            // spawn
+                        } break;
+                        case arch_rock: {
+                            // spawn
+                        } break;
+                        default: {
+                        } break;
+                    }
+
+                    entity_destroy(selected_en);
+                }
+            }
         }
 
         // :controls
