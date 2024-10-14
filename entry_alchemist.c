@@ -113,6 +113,7 @@ typedef enum EntityArchetype {
 
     arch_item_rock = 4,
     arch_item_pine_wood = 5,
+    ARCH_MAX
 } EntityArchetype;
 typedef struct Entity {
     bool is_valid;
@@ -126,8 +127,13 @@ typedef struct Entity {
     SpriteID sprite_id;
 } Entity;
 
+typedef struct ItemData {
+    int amount;
+} ItemData;
+
 typedef struct World {
     Entity entities[MAX_ENTITY_COUNT];
+    ItemData inventory_items[ARCH_MAX];
 } World;
 World *world = 0;
 
@@ -183,6 +189,12 @@ void setup_item_pine_wood(Entity *en) {
     en->destroyable_world_item = false;
     en->is_item = true;
 }
+void setup_item_rock(Entity *en) {
+    en->arch = arch_item_rock;
+    en->sprite_id = SPRITE_item_rock;
+    en->destroyable_world_item = false;
+    en->is_item = true;
+}
 
 int entry(int argc, char **argv) {
     window.title = STR("Alchemist");
@@ -200,9 +212,17 @@ int entry(int argc, char **argv) {
     sprites[SPRITE_tree_pine] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/tree_pine.png"), get_heap_allocator())};
     sprites[SPRITE_rock_0] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/rock_0.png"), get_heap_allocator())};
     sprites[SPRITE_item_pine_wood] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/item_pinewood.png"), get_heap_allocator())};
+    sprites[SPRITE_item_rock] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/item_rock.png"), get_heap_allocator())};
+
+    // :init
+    // test item inventory
+    {
+        world->inventory_items[arch_item_pine_wood].amount = 5;
+    }
 
     Entity *player_en = entity_create();
     setup_player(player_en);
+
     for (int i = 0; i < 10; i++) {
         Entity *en = entity_create();
         setup_rock(en);
@@ -294,8 +314,6 @@ int entry(int argc, char **argv) {
             Entity *en = &world->entities[i];
             if (en->is_valid) {
                 switch (en->arch) {
-                    // case arch_player:
-                    // break;
                     default:
                         Sprite *sprite = get_sprite(en->sprite_id);
                         Matrix4 xform = m4_scalar(1.0);
@@ -324,6 +342,7 @@ int entry(int argc, char **argv) {
             window.should_close = true;
         }
 
+        // :destroy entity
         {
             Entity *selected_en = world_frame.selected_entity;
 
@@ -338,10 +357,13 @@ int entry(int argc, char **argv) {
                                 setup_item_pine_wood(en);
                                 en->pos = selected_en->pos;
                             }
-                            // spawn
                         } break;
                         case arch_rock: {
-                            // spawn
+                            {
+                                Entity *en = entity_create();
+                                setup_item_rock(en);
+                                en->pos = selected_en->pos;
+                            }
                         } break;
                         default: {
                         } break;
