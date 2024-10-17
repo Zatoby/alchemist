@@ -1,8 +1,14 @@
+inline float v2_dist(Vector2 a, Vector2 b) {
+    return v2_length(v2_sub(a, b));
+}
+
+// ^^^^^^ engine changes
 
 #include "range.c"
 
 const int tile_width = 8;
 const float entity_selection_radius = 16.0f;
+const float player_pickup_radius = 20.0f;
 
 const int rock_health = 5;
 const int tree_health = 3;
@@ -279,7 +285,7 @@ int entry(int argc, char **argv) {
                     int entity_tile_x = world_pos_to_tile_pos(en->pos.x);
                     int entity_tile_y = world_pos_to_tile_pos(en->pos.y);
 
-                    float dist = fabs(v2_length(v2_sub(en->pos, mouse_pos_world)));
+                    float dist = fabs(v2_dist(en->pos, mouse_pos_world));
 
                     if (dist < entity_selection_radius) {
                         if (!world_frame.selected_entity || dist < smallest_dist) {
@@ -304,6 +310,23 @@ int entry(int argc, char **argv) {
                         float x_pos = x * tile_width;
                         float y_pos = y * tile_width;
                         draw_rect(v2(x_pos + tile_width * -0.5, y_pos + tile_width * -0.5), v2(tile_width, tile_width), col);
+                    }
+                }
+            }
+        }
+
+        // :update entities
+        {
+            for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
+                Entity *en = &world->entities[i];
+                if (en->is_valid) {
+                    // pick up item
+                    if (en->is_item) {
+                        // TODO -> Physics
+                        if (fabsf(v2_dist(en->pos, player_en->pos)) < player_pickup_radius) {
+                            world->inventory_items[en->arch].amount += 1;
+                            entity_destroy(en);
+                        }
                     }
                 }
             }
