@@ -121,6 +121,22 @@ typedef enum EntityArchetype {
     arch_item_pine_wood = 5,
     ARCH_MAX
 } EntityArchetype;
+
+SpriteID get_sprite_id_from_archetype(EntityArchetype arch) {
+    switch (arch) {
+        case arch_item_pine_wood:
+            return SPRITE_item_pine_wood;
+            break;
+        case arch_item_rock:
+            return SPRITE_item_rock;
+            break;
+
+        default:
+            return 0;
+            break;
+    }
+}
+
 typedef struct Entity {
     bool is_valid;
     EntityArchetype arch;
@@ -214,6 +230,7 @@ int entry(int argc, char **argv) {
     assert(font, "Failed loading arial.ttf");
     const u32 font_height = 48;
 
+    sprites[0] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/missing.png"), get_heap_allocator())};
     sprites[SPRITE_player] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/player.png"), get_heap_allocator())};
     sprites[SPRITE_tree_pine] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/tree_pine.png"), get_heap_allocator())};
     sprites[SPRITE_rock_0] = (Sprite){.image = load_image_from_disk(fixed_string("res/sprites/rock_0.png"), get_heap_allocator())};
@@ -244,7 +261,7 @@ int entry(int argc, char **argv) {
         // en->pos.y -= tile_width * 0.5;
     }
 
-    float zoom = 7.0;
+    float zoom = 6.0;
     Vector2 camera_pos = v2(0, 0);
 
     // === Game Loop
@@ -332,7 +349,7 @@ int entry(int argc, char **argv) {
             }
         }
 
-        // :render
+        // :render entities
         for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
             Entity *en = &world->entities[i];
             if (en->is_valid) {
@@ -357,6 +374,48 @@ int entry(int argc, char **argv) {
 
                         draw_image_xform(sprite->image, xform, get_sprite_size(sprite), col);
                         break;
+                }
+            }
+        }
+
+        // :ui rendering
+        {
+            float width = 240.0;
+            float height = 135.0;
+            draw_frame.camera_xform = m4_scalar(1.0);
+            draw_frame.projection = m4_make_orthographic_projection(0.0, width, 0.0, height, -1, 10);
+
+            int item_count = 0;
+            for (int i = 0; i < ARCH_MAX; i++) {
+                ItemData *item = &world->inventory_items[i];
+                if (item->amount > 0) {
+                    item_count += 1;
+                }
+            }
+
+            const float icon_size = 8.0;
+            const float padding = 2.0;
+            float icon_width = icon_size + padding;
+
+            float item_bar_width = item_count * icon_width;
+            float x_start_pos = (width - item_bar_width) / 2.0 + icon_width / 2;
+
+            int slot_index = 0;
+            for (int i = 0; i < ARCH_MAX; i++) {
+                ItemData *item = &world->inventory_items[i];
+                if (item->amount > 0) {
+                    float slot_index_offset = slot_index * icon_width;
+
+                    Matrix4 xform = m4_scalar(1.0);
+                    xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, height / 2, 0.0));
+                    xform = m4_translate(xform, v3(-icon_size / 2, -icon_size / 2, 0.0));
+                    draw_rect_xform(xform, v2(8, 8), COLOR_BLACK);
+
+                    Sprite *sprite = get_sprite(get_sprite_id_from_archetype(i));
+
+                    draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+
+                    slot_index += 1;
                 }
             }
         }
