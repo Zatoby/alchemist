@@ -48,6 +48,27 @@ void animate_v2_to_target(Vector2 *value, Vector2 target, float delta_t, float r
     animate_f32_to_target(&(value->y), target.y, delta_t, rate);
 }
 
+Range2f quad_to_range(Draw_Quad *quad) {
+    return (Range2f){quad->bottom_left, quad->top_right};
+}
+
+// ^^^ generic util
+
+Vector2 get_mouse_pos_in_ndc() {
+    float mouse_x = input_frame.mouse_x;
+    float mouse_y = input_frame.mouse_y;
+    Matrix4 proj = draw_frame.projection;
+    Matrix4 view = draw_frame.camera_xform;
+    float window_w = window.width;
+    float window_h = window.height;
+
+    // Normalize the mouse coordinates
+    float ndc_x = (mouse_x / (window_w * 0.5f)) - 1.0f;
+    float ndc_y = (mouse_y / (window_h * 0.5f)) - 1.0f;
+
+    return v2(ndc_x, ndc_y);
+}
+
 Vector2 screen_to_world() {
     float mouse_x = input_frame.mouse_x;
     float mouse_y = input_frame.mouse_y;
@@ -395,11 +416,22 @@ int entry(int argc, char **argv) {
 
             const float icon_size = 8.0;
             const float padding = 2.0;
-            float icon_width = icon_size + padding;
+            float icon_width = icon_size;
 
-            float item_bar_width = item_count * icon_width;
-            float x_start_pos = (width - item_bar_width) / 2.0 + icon_width / 2;
+            const int icon_row_count = 8;
 
+            float item_bar_width = icon_row_count * icon_width;
+            float x_start_pos = (width - item_bar_width) / 2.0 + icon_width / 2 - icon_width / 2;
+            float y_start_pos = height / 1.8;
+
+            // box
+            {
+                Matrix4 xform = m4_identity();
+                xform = m4_translate(xform, v3(x_start_pos, y_start_pos, 0.0));
+                draw_rect_xform(xform, v2(item_bar_width, icon_width), v4(0, 0, 0, 0.5));
+            }
+
+            // item-icons
             int slot_index = 0;
             for (int i = 0; i < ARCH_MAX; i++) {
                 ItemData *item = &world->inventory_items[i];
@@ -407,13 +439,42 @@ int entry(int argc, char **argv) {
                     float slot_index_offset = slot_index * icon_width;
 
                     Matrix4 xform = m4_scalar(1.0);
-                    xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, height / 2, 0.0));
-                    xform = m4_translate(xform, v3(-icon_size / 2, -icon_size / 2, 0.0));
-                    draw_rect_xform(xform, v2(8, 8), COLOR_BLACK);
+                    xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_start_pos, 0.0));
+                    Matrix4 box_bottom_right_xform = xform;
+
+                    Vector4 box_color = v4(1, 1, 1, 0.25);
+                    // item selection
+                    // todo: nothing is working..
+                    // {
+                    //     float dist = fabs(v2_dist(v2(x_start_pos + slot_index_offset, y_start_pos), v2(input_frame.mouse_x, input_frame.mouse_y)));
+                    //     if (dist < 80) {
+                    //         box_color = v4(1, 0, 0, 0.25);
+                    //     }
+                    // }
+
+                    Draw_Quad *quad = draw_rect_xform(xform, v2(8, 8), box_color);
+                    int is_selected_alpha = 0;
+                    {
+                        Range2f box = quad_to_range(quad);
+                        if (range2f_contains(box, get_mouse_pos_in_ndc())) {
+                            is_selected_alpha = 1;
+                        }
+                    }
 
                     Sprite *sprite = get_sprite(get_sprite_id_from_archetype(i));
+                    xform = m4_translate(xform, v3(icon_width / 2, icon_width / 2, 0.0));
+                    // todo: selection polish
 
+                    if (is_selected_alpha == 1) {
+                        float scale_adjust = 0.1 * sin_breathe(os_get_elapsed_seconds(), 10) + 1;
+                        xform = m4_scale(xform, v3(scale_adjust, scale_adjust, 1));
+                    }
+                    xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
+                    // xform = m4_translate(xform, v3(get_sprite_size(sprite).x * 0.25, get_sprite_size(sprite).y * 0.5, 0.0));
                     draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+
+                    // draw_text_xform(font, item->amount, font_height, xform, v2(1, 1), COLOR_RED);
+                    // draw_text_xform(font, STR("5"), font_height, box_bottom_right_xform, v2(0.08, 0.08), COLOR_WHITE);
 
                     slot_index += 1;
                 }
