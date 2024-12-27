@@ -6,6 +6,8 @@ inline float v2_dist(Vector2 a, Vector2 b) {
 
 #include "range.c"
 
+Vector4 bg_box_col = {0, 0, 0, 0.5};
+
 const int tile_width = 8;
 const float entity_selection_radius = 16.0f;
 const float player_pickup_radius = 20.0f;
@@ -48,11 +50,30 @@ void animate_v2_to_target(Vector2 *value, Vector2 target, float delta_t, float r
     animate_f32_to_target(&(value->y), target.y, delta_t, rate);
 }
 
-Range2f quad_to_range(Draw_Quad *quad) {
-    return (Range2f){quad->bottom_left, quad->top_right};
+Range2f quad_to_range(Draw_Quad quad) {
+    return (Range2f){quad.bottom_left, quad.top_right};
 }
 
 // ^^^ generic util
+
+// scuff
+Draw_Quad ndc_quad_to_screen_quad(Draw_Quad ndc_quad) {
+    // NOTE: we're assuming these are the screen space matrices
+    Matrix4 proj = draw_frame.projection;
+    Matrix4 view = draw_frame.camera_xform;
+
+    Matrix4 ndc_to_screen_space = m4_identity();
+    ndc_to_screen_space = m4_mul(ndc_to_screen_space, m4_inverse(proj));
+    ndc_to_screen_space = m4_mul(ndc_to_screen_space, view);
+
+    ndc_quad.bottom_left = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.bottom_left), 0, 1)).xy;
+    ndc_quad.bottom_right = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.bottom_right), 0, 1)).xy;
+    ndc_quad.top_left = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.top_left), 0, 1)).xy;
+    ndc_quad.top_right = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.top_right), 0, 1)).xy;
+
+    return ndc_quad;
+}
+//
 
 Vector2 get_mouse_pos_in_ndc() {
     float mouse_x = input_frame.mouse_x;
@@ -155,6 +176,17 @@ SpriteID get_sprite_id_from_archetype(EntityArchetype arch) {
         default:
             return 0;
             break;
+    }
+}
+
+string get_archetype_pretty_name(EntityArchetype arch) {
+    switch (arch) {
+        case arch_item_pine_wood:
+            return STR("Pine Wood");
+        case arch_item_rock:
+            return STR("Rock");
+        default:
+            return STR("");
     }
 }
 
@@ -285,6 +317,7 @@ int entry(int argc, char **argv) {
     float zoom = 6.0;
     Vector2 camera_pos = v2(0, 0);
 
+    bool is_inventory_open = false;
     // === Game Loop
     float64 last_time = os_get_elapsed_seconds();
     while (!window.should_close) {
@@ -399,6 +432,9 @@ int entry(int argc, char **argv) {
             }
         }
 
+        if (is_key_just_pressed('I')) {
+            is_inventory_open = !is_inventory_open;
+        }
         // :ui rendering
         {
             float width = 240.0;
@@ -406,77 +442,120 @@ int entry(int argc, char **argv) {
             draw_frame.camera_xform = m4_scalar(1.0);
             draw_frame.projection = m4_make_orthographic_projection(0.0, width, 0.0, height, -1, 10);
 
-            int item_count = 0;
-            for (int i = 0; i < ARCH_MAX; i++) {
-                ItemData *item = &world->inventory_items[i];
-                if (item->amount > 0) {
-                    item_count += 1;
+            if (is_inventory_open) {
+                int item_count = 0;
+                for (int i = 0; i < ARCH_MAX; i++) {
+                    ItemData *item = &world->inventory_items[i];
+                    if (item->amount > 0) {
+                        item_count += 1;
+                    }
                 }
-            }
 
-            const float icon_size = 8.0;
-            const float padding = 2.0;
-            float icon_width = icon_size;
+                const float icon_size = 8.0;
+                const float padding = 2.0;
+                float icon_width = icon_size;
 
-            const int icon_row_count = 8;
+                const int icon_row_count = 8;
 
-            float item_bar_width = icon_row_count * icon_width;
-            float x_start_pos = (width - item_bar_width) / 2.0 + icon_width / 2 - icon_width / 2;
-            float y_start_pos = height / 1.8;
+                float item_bar_width = icon_row_count * icon_width;
+                float x_start_pos = (width - item_bar_width) / 2.0 + icon_width / 2 - icon_width / 2;
+                float y_start_pos = height / 1.8;
 
-            // box
-            {
-                Matrix4 xform = m4_identity();
-                xform = m4_translate(xform, v3(x_start_pos, y_start_pos, 0.0));
-                draw_rect_xform(xform, v2(item_bar_width, icon_width), v4(0, 0, 0, 0.5));
-            }
+                // box
+                {
+                    Matrix4 xform = m4_identity();
+                    xform = m4_translate(xform, v3(x_start_pos, y_start_pos, 0.0));
+                    draw_rect_xform(xform, v2(item_bar_width, icon_width), bg_box_col);
+                }
 
-            // item-icons
-            int slot_index = 0;
-            for (int i = 0; i < ARCH_MAX; i++) {
-                ItemData *item = &world->inventory_items[i];
-                if (item->amount > 0) {
-                    float slot_index_offset = slot_index * icon_width;
+                // item-icons
+                int slot_index = 0;
+                for (int i = 0; i < ARCH_MAX; i++) {
+                    ItemData *item = &world->inventory_items[i];
+                    if (item->amount > 0) {
+                        float slot_index_offset = slot_index * icon_width;
 
-                    Matrix4 xform = m4_scalar(1.0);
-                    xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_start_pos, 0.0));
-                    Matrix4 box_bottom_right_xform = xform;
+                        Matrix4 xform = m4_scalar(1.0);
+                        xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_start_pos, 0.0));
+                        // Matrix4 box_bottom_right_xform = xform;
+                        Matrix4 box_tooltip = m4_scalar(1.0);
+                        box_tooltip = m4_translate(box_tooltip, v3(x_start_pos, y_start_pos, 0.0));
 
-                    Vector4 box_color = v4(1, 1, 1, 0.25);
-                    // item selection
-                    // todo: nothing is working..
-                    // {
-                    //     float dist = fabs(v2_dist(v2(x_start_pos + slot_index_offset, y_start_pos), v2(input_frame.mouse_x, input_frame.mouse_y)));
-                    //     if (dist < 80) {
-                    //         box_color = v4(1, 0, 0, 0.25);
-                    //     }
-                    // }
+                        Vector4 box_color = v4(1, 1, 1, 0.25);
 
-                    Draw_Quad *quad = draw_rect_xform(xform, v2(8, 8), box_color);
-                    int is_selected_alpha = 0;
-                    {
-                        Range2f box = quad_to_range(quad);
-                        if (range2f_contains(box, get_mouse_pos_in_ndc())) {
-                            is_selected_alpha = 1;
+                        Draw_Quad *quad = draw_rect_xform(xform, v2(8, 8), box_color);
+                        int is_selected_alpha = 0;
+                        {
+                            Range2f box = quad_to_range(*quad);
+                            if (range2f_contains(box, get_mouse_pos_in_ndc())) {
+                                is_selected_alpha = 1;
+                            }
                         }
+
+                        Sprite *sprite = get_sprite(get_sprite_id_from_archetype(i));
+                        xform = m4_translate(xform, v3(icon_width / 2, icon_width / 2, 0.0));
+
+                        // todo: selection polish
+                        //     float scale_adjust = 0.1 * sin_breathe(os_get_elapsed_seconds(), 10) + 1;
+                        //     xform = m4_scale(xform, v3(scale_adjust, scale_adjust, 1));
+                        //     box_tooltip = m4_translate(box_tooltip, v3(item_bar_width / 2 - icon_width / 2, -icon_width * 2, 0));
+                        //     draw_rect_xform(box_tooltip, v2(10, 10), COLOR_BLACK);
+                        // }
+
+                        xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
+                        draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+                        // xform = m4_translate(xform, v3(get_sprite_size(sprite).x * 0.25, get_sprite_size(sprite).y * 0.5, 0.0));
+
+                        // tooltip
+                        if (is_selected_alpha == 1) {
+                            Draw_Quad screen_quad = ndc_quad_to_screen_quad(*quad);
+                            Range2f screen_range = quad_to_range(screen_quad);
+                            Vector2 icon_center = range2f_get_center(screen_range);
+
+                            // icon_center
+                            Matrix4 xform = m4_scalar(1.0);
+                            // TODO - guessin y-box size here
+                            // to automate -> move it below, after text stuff
+                            // but then box would be drawing in front -> z sorting
+                            Vector2 box_size = v2(25, 14);
+
+                            xform = m4_translate(xform, v3(box_size.x * -0.5, -box_size.y - icon_width * 0.5, 0));
+                            xform = m4_translate(xform, v3(icon_center.x, icon_center.y, 0));
+
+                            draw_rect_xform(xform, box_size, bg_box_col);
+
+                            float current_y_pos = icon_center.y;
+                            {
+                                string title = get_archetype_pretty_name(i);
+
+                                Gfx_Text_Metrics metrics = measure_text(font, title, font_height, v2(0.1, 0.1));
+
+                                Vector2 draw_pos = v2(icon_center.x, current_y_pos);
+                                draw_pos = v2_sub(draw_pos, metrics.functional_pos_min);
+                                draw_pos = v2_sub(draw_pos, v2_divf(metrics.functional_size, 2));  // center
+                                draw_pos = v2_sub(draw_pos, v2(0, icon_width));
+                                draw_pos = v2_sub(draw_pos, v2(0, 2.0));  // padding
+
+                                draw_text(font, title, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
+                                current_y_pos = draw_pos.y;
+                            }
+                            {
+                                string text = STR("x%i");
+                                text = sprint(temp_allocator, text, item->amount);
+
+                                Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
+
+                                Vector2 draw_pos = v2(icon_center.x, current_y_pos);
+                                draw_pos = v2_sub(draw_pos, metrics.functional_pos_min);
+                                draw_pos = v2_sub(draw_pos, v2_divf(metrics.functional_size, 2));  // center
+                                draw_pos = v2_sub(draw_pos, v2(0, metrics.visual_size.y));
+                                draw_pos = v2_sub(draw_pos, v2(0, 2.0));  // padding
+
+                                draw_text(font, text, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
+                            }
+                        }
+                        slot_index += 1;
                     }
-
-                    Sprite *sprite = get_sprite(get_sprite_id_from_archetype(i));
-                    xform = m4_translate(xform, v3(icon_width / 2, icon_width / 2, 0.0));
-                    // todo: selection polish
-
-                    if (is_selected_alpha == 1) {
-                        float scale_adjust = 0.1 * sin_breathe(os_get_elapsed_seconds(), 10) + 1;
-                        xform = m4_scale(xform, v3(scale_adjust, scale_adjust, 1));
-                    }
-                    xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
-                    // xform = m4_translate(xform, v3(get_sprite_size(sprite).x * 0.25, get_sprite_size(sprite).y * 0.5, 0.0));
-                    draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
-
-                    // draw_text_xform(font, item->amount, font_height, xform, v2(1, 1), COLOR_RED);
-                    // draw_text_xform(font, STR("5"), font_height, box_bottom_right_xform, v2(0.08, 0.08), COLOR_WHITE);
-
-                    slot_index += 1;
                 }
             }
         }
